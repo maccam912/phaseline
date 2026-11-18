@@ -37,7 +37,9 @@ with tempfile.TemporaryDirectory() as folder:
         subprocess.run(["unzip", "-q", archive, "-d", root], check=True)
         if sys.platform == "darwin":
             app = root / "Phaseline.app"
-            subprocess.run(["lipo", program, "-verify_arch", "arm64", "x86_64"], check=True)
+            architectures = subprocess.check_output(["lipo", "-archs", program], text=True).split()
+            if set(architectures) != {"arm64", "x86_64"}:
+                raise ValueError(f"Unexpected macOS architectures {architectures}")
             subprocess.run(["codesign", "--verify", "--strict", "--deep", app], check=True)
             with (app / "Contents/Info.plist").open("rb") as handle:
                 metadata = plistlib.load(handle)
