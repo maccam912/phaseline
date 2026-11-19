@@ -39,15 +39,13 @@ The historical compositions are in the U.S. public domain. The finished game mix
 
 ## Export
 
-GitHub Actions builds all four platforms on each push to `main`. You can also start a release from the Actions tab on `main`. Versions use the major and minor from `project.godot` and the release workflow’s run number for the patch, for example `v1.1.3`. Android uses the same run number as its update code. Re-running the same workflow run keeps its number. The release includes three desktop ZIPs and a SHA-256 checksum file. The signed Android APK is also listed in the checksums once published.
+GitHub Actions builds all four platforms on each push to `main`. You can also start a release from the Actions tab on `main`. Versions use the major and minor from `project.godot` and the release workflow’s run number for the patch, for example `v1.1.4`. Android uses the same run number as its update code. Re-running the same workflow run keeps its number. After the startup tests pass, Actions publishes the signed APK, the three desktop ZIPs, and their SHA-256 checksums together. The encrypted repository secrets `ANDROID_KEYSTORE_BASE64` and `ANDROID_KEYSTORE_PASSWORD` provide the Android signing identity.
 
-For Android releases, the maintainer can sign on their own machine using the original Phaseline release keystore (alias `phaseline`). Set `ANDROID_HOME` to an Android SDK with Build Tools 35.0.1 installed, authenticate `gh` with release access, and run the following command with the published tag and private keystore path. The helper downloads the matching build, prompts for the keystore password, verifies the signature, then uploads the APK and updated checksums. The signing key stays on the machine.
+If both signing secrets are absent, Actions publishes the desktop ZIPs and retains the Android build as an unsigned workflow artifact. The maintainer can sign that artifact locally using the original Phaseline release keystore (alias `phaseline`). Set `ANDROID_HOME` to an Android SDK with Build Tools 35.0.1 installed, authenticate `gh` with release access, and run the following command with the published tag and private keystore path. The helper downloads the matching build, prompts for the keystore password, verifies the signature, then uploads the APK and updated checksums.
 
 ```sh
-python3 .github/scripts/publish_android.py v1.1.3 --keystore /path/to/phaseline.p12
+python3 .github/scripts/publish_android.py v1.1.4 --keystore /path/to/phaseline.p12
 ```
-
-For unattended signing, the workflow also supports the encrypted repository secrets `ANDROID_KEYSTORE_BASE64` and `ANDROID_KEYSTORE_PASSWORD`. When both are configured, it verifies and publishes the signed APK together with the desktop builds.
 
 For local exports, install the Godot export templates matching your editor version and run the desired command from the project root. The bundled recordings let you build on any platform without installing Logic Pro.
 

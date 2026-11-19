@@ -11,7 +11,8 @@ for _ in {1..45}; do
     if grep -q 'Godot Engine v4.7.2' "$RUNNER_TEMP/phaseline-android.log"; then
       sleep 4
       adb logcat --pid="$pid" -d > "$RUNNER_TEMP/phaseline-android.log"
-      if grep -E 'SCRIPT ERROR|Parse Error|FATAL EXCEPTION| E godot *: ERROR:' "$RUNNER_TEMP/phaseline-android.log"; then
+      if grep -qE 'SCRIPT ERROR|Parse Error|FATAL EXCEPTION| E godot *: ERROR:' "$RUNNER_TEMP/phaseline-android.log"; then
+        tail -n 150 "$RUNNER_TEMP/phaseline-android.log"
         exit 1
       fi
       [[ "$(adb shell pidof -s "$package" | tr -d '\r')" == "$pid" ]]
