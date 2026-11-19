@@ -44,7 +44,8 @@ GitHub Actions builds all four platforms on each push to `main`. You can also st
 If both signing secrets are absent, Actions publishes the desktop ZIPs and retains the Android build as an unsigned workflow artifact. The maintainer can sign that artifact locally using the original Phaseline release keystore (alias `phaseline`). Set `ANDROID_HOME` to an Android SDK with Build Tools 35.0.1 installed, authenticate `gh` with release access, and run the following command with the published tag and private keystore path. The helper downloads the matching build, prompts for the keystore password, verifies the signature, then uploads the APK and updated checksums.
 
 ```sh
-python3 .github/scripts/publish_android.py v1.1.4 --keystore /path/to/phaseline.p12
+tag=$(gh release view --repo maccam912/phaseline --json tagName --jq .tagName)
+python3 .github/scripts/publish_android.py "$tag" --keystore /path/to/phaseline.p12
 ```
 
 For local exports, install the Godot export templates matching your editor version and run the desired command from the project root. The bundled recordings let you build on any platform without installing Logic Pro.

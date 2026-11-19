@@ -175,8 +175,9 @@ jobs:
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 35
-          target: google_apis
+          target: default
           arch: x86_64
+          ram-size: 3072M
           emulator-options: -no-window -gpu swangle -no-snapshot -noaudio -no-boot-anim
           disable-animations: true
           script: bash .github/scripts/android-smoke.sh
