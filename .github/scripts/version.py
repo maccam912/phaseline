@@ -8,7 +8,8 @@ import re
 def stamp(path, fields):
     text = path.read_text()
     for key, value in fields.items():
-        text, count = re.subn(rf'^{re.escape(key)}="[^"]*"$', f'{key}="{value}"', text, flags=re.M)
+        literal = str(value) if isinstance(value, int) else f'"{value}"'
+        text, count = re.subn(rf'^{re.escape(key)}=(?:"[^"]*"|\d+)$', f'{key}={literal}', text, flags=re.M)
         if count != 1:
             raise ValueError(f"Expected one {key} field in {path}, found {count}")
     path.write_text(text)
@@ -26,6 +27,8 @@ stamp(Path("export_presets.cfg"), {
     "application/version": str(number),
     "application/file_version": f"{version}.0",
     "application/product_version": f"{version}.0",
+    "version/code": number,
+    "version/name": version,
 })
 with open(os.environ["GITHUB_OUTPUT"], "a") as output:
     print(f"version={version}", file=output)

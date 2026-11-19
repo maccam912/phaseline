@@ -13,7 +13,7 @@ const GOOD_WINDOW := 0.145
 const STAGE_SIZE := Vector2(1280, 800)
 const HORIZON := 244.0
 const TARGET := 630.0
-const LANE_WIDTH := 100.0
+const TOUCH_PAD_HEIGHT := 104.0
 # Depth in seconds at constant forward speed. Zero time is the judgment line.
 const CAMERA_DISTANCE := 0.84
 const FAR_ROAD := 24.0
@@ -28,6 +28,8 @@ const LINE := Color("#363c3c")
 const PAUSE_RECT := Rect2(1088, 26, 148, 42)
 const MENU_RECTS := [Rect2(447, 351, 386, 53), Rect2(447, 416, 386, 53), Rect2(447, 481, 386, 53)]
 
+var _touch_layout := OS.has_feature("android")
+var _lane_width := 100.0
 var _display: Font
 var _mono: Font
 var _headline: Font
@@ -117,8 +119,9 @@ func setup(track: Dictionary, difficulty: String, settings: Dictionary) -> void:
 	var bindings: Array = settings.get("keys", Lanes.KEYS)
 	_keys = bindings if bindings.size() == Lanes.COUNT else Lanes.KEYS
 	_key_labels.clear()
-	for key in _keys:
-		_key_labels.append(Lanes.key_name(int(key)))
+	_lane_width = 120.0 if _touch_layout else 100.0
+	for lane in Lanes.COUNT:
+		_key_labels.append(str(lane + 1) if _touch_layout else Lanes.key_name(int(_keys[lane])))
 	_music.volume_db = linear_to_db(clampf(float(settings.get("music_volume", 0.8)), 0.0, 1.0))
 	var sfx_db := linear_to_db(clampf(float(settings.get("sfx_volume", 0.55)), 0.0, 1.0))
 	for player in _fx:
@@ -396,7 +399,15 @@ func _leave() -> void:
 	exited.emit()
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+	if what in [NOTIFICATION_APPLICATION_FOCUS_OUT, NOTIFICATION_APPLICATION_PAUSED]:
+		_pause()
+
+func go_back() -> void:
+	if _mode == Mode.ERROR:
+		_leave()
+	elif _mode == Mode.PAUSED:
+		_resume()
+	else:
 		_pause()
 
 func _input(event: InputEvent) -> void:
@@ -406,12 +417,7 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventKey and not event.echo:
 		var code: int = event.physical_keycode if event.physical_keycode != 0 else event.keycode
 		if code == KEY_ESCAPE and event.pressed:
-			if _mode == Mode.ERROR:
-				_leave()
-			elif _mode == Mode.PAUSED:
-				_resume()
-			else:
-				_pause()
+			go_back()
 			handled = true
 		elif _mode == Mode.PAUSED or _mode == Mode.ERROR:
 			if event.pressed:
@@ -431,6 +437,9 @@ func _input(event: InputEvent) -> void:
 				else:
 					_release(source)
 				handled = true
+	elif event is InputEventMouse and event.device == InputEvent.DEVICE_ID_EMULATION:
+		# Buttons in the library use emulated clicks. The highway consumes the original touches.
+		handled = true
 	elif event is InputEventMouseMotion:
 		_mouse_at = _stage_point(get_local_mouse_position())
 		if _mode == Mode.PAUSED:
@@ -442,7 +451,7 @@ func _input(event: InputEvent) -> void:
 		handled = _pointer(_stage_point(get_local_mouse_position()), event.pressed, "mouse")
 	elif event is InputEventScreenTouch:
 		var local_point: Vector2 = get_global_transform_with_canvas().affine_inverse() * event.position
-		handled = _pointer(_stage_point(local_point), event.pressed, "touch%d" % event.index)
+		handled = _pointer(_stage_point(local_point), event.pressed and not event.canceled, "touch%d" % event.index)
 	if handled and is_inside_tree():
 		get_viewport().set_input_as_handled()
 
@@ -460,12 +469,13 @@ func _pointer(point: Vector2, pressed: bool, source: String) -> bool:
 				_menu_action(i)
 				break
 		return true
-	if PAUSE_RECT.has_point(point):
+	if _pause_rect().has_point(point):
 		_pause()
 		return true
-	if point.y >= _track_point(Lanes.HAND_SPLIT, FAR_ROAD).y and point.y <= TARGET + 65:
+	var pad_bottom := TARGET + (4.0 + TOUCH_PAD_HEIGHT if _touch_layout else 65.0)
+	if point.y >= _track_point(Lanes.HAND_SPLIT, FAR_ROAD).y and point.y <= pad_bottom:
 		var scale_at_y := minf(1.0, (point.y - HORIZON) / (TARGET - HORIZON))
-		var half_width := LANE_WIDTH * Lanes.HAND_SPLIT * scale_at_y
+		var half_width := _lane_width * Lanes.HAND_SPLIT * scale_at_y
 		var relative := (point.x - CENTER + half_width) / (half_width * 2.0)
 		if relative >= 0.0 and relative < 1.0:
 			_press(source, floori(relative * Lanes.COUNT))
@@ -474,6 +484,9 @@ func _pointer(point: Vector2, pressed: bool, source: String) -> bool:
 
 func _stage_scale() -> float:
 	return maxf(0.001, minf(size.x / STAGE_SIZE.x, size.y / STAGE_SIZE.y))
+
+func _pause_rect() -> Rect2:
+	return PAUSE_RECT.grow_individual(12, 12, 0, 12) if _touch_layout else PAUSE_RECT
 
 func _stage_point(point: Vector2) -> Vector2:
 	return (point - (size - STAGE_SIZE * _stage_scale()) * 0.5) / _stage_scale()
@@ -516,7 +529,7 @@ func _projection_scale(seconds_until: float) -> float:
 	return CAMERA_DISTANCE / (CAMERA_DISTANCE + seconds_until)
 
 func _track_point(lane: float, seconds_until: float, elevation: float = 0.0) -> Vector2:
-	var at_strike := Vector2((lane - Lanes.HAND_SPLIT) * LANE_WIDTH, TARGET - HORIZON - elevation)
+	var at_strike := Vector2((lane - Lanes.HAND_SPLIT) * _lane_width, TARGET - HORIZON - elevation)
 	return Vector2(CENTER, HORIZON) + at_strike * _projection_scale(seconds_until)
 
 func _time_at_y(y: float) -> float:
@@ -669,7 +682,7 @@ func _draw_note(note: Dictionary, now: float) -> void:
 	draw_line(_track_point(lane + 0.45, head_time, 1.2), _track_point(lane + 0.55, head_time, 1.2), Color(INK, 0.36 * arrival_alpha), maxf(0.8, 1.8 * _projection_scale(head_time)))
 
 	# The first difficulty teaches the ten-key layout directly on approaching notes.
-	if _difficulty == "easy" and head_time < 0.95 and not held and _key_labels[lane].length() == 1:
+	if _difficulty == "easy" and head_time < 0.95 and not held and _key_labels[lane].length() <= 2:
 		var alpha := 1.0 - smoothstep(0.55, 0.95, head_time)
 		var baseline := _track_point(lane + 0.5, back, 9.5)
 		var label_size := roundi(lerpf(10.0, 16.0, _projection_scale(maxf(head_time, 0.0))))
@@ -683,16 +696,17 @@ func _draw_receptor(lane: int) -> void:
 	var mid := (left + right) * 0.5
 	var color: Color = Lanes.COLORS[lane]
 	var down: bool = _touch_lane_counts[lane] > 0
-	var underlay := Rect2(left + 1.5, TARGET + 4, right - left - 3, 56)
+	var underlay := Rect2(left + 1.5, TARGET + 4, right - left - 3, TOUCH_PAD_HEIGHT if _touch_layout else 56.0)
 	draw_rect(underlay, Color("#202529").lerp(color, 0.22 if down else 0.025))
 	draw_rect(underlay, Color(color, 0.60 if down else 0.24), false, 1.0)
 	draw_rect(Rect2(left + 2, TARGET + 4, right - left - 4, 3.7), color)
 	var label := _key_labels[lane] if lane < _key_labels.size() else "?"
-	var font_size := 24 if label.length() <= 2 else 15
+	var font_size := 31 if _touch_layout else (24 if label.length() <= 2 else 15)
 	while font_size > 10 and _mono.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x > right - left - 8.0:
 		font_size -= 1
-	_text(Vector2(left, TARGET + 40), label, _mono, font_size, color if down else PAPER, right - left, HORIZONTAL_ALIGNMENT_CENTER)
-	if lane == 3 or lane == 6:
+	var baseline := underlay.get_center().y + (_mono.get_ascent(font_size) - _mono.get_descent(font_size)) * 0.5
+	_text(Vector2(left, baseline), label, _mono, font_size, color if down else PAPER, right - left, HORIZONTAL_ALIGNMENT_CENTER)
+	if not _touch_layout and lane in [3, 6]:
 		draw_rect(Rect2(mid - 8, TARGET + 46, 16, 2.5), Color(color, 0.85))
 	var burst: float = _last_strikes[lane]
 	if burst > 0.0 and not _reduced:
@@ -711,13 +725,15 @@ func _draw_session() -> void:
 	_text(Vector2(88, 56), "PHASELINE", _headline, 32, PAPER)
 	draw_circle(Vector2(284, 45), 3.6, LIME, true, -1, true)
 	_text(Vector2(297, 49), "LIVE SESSION", _mono, 12, MUTE)
-	var paused_hover := PAUSE_RECT.has_point(_mouse_at)
-	draw_rect(PAUSE_RECT, Color("#2b3330") if paused_hover else Color("#202523"))
-	draw_rect(PAUSE_RECT, LINE, false, 1.0)
+	var pause_rect := _pause_rect()
+	var paused_hover := pause_rect.has_point(_mouse_at)
+	draw_rect(pause_rect, Color("#2b3330") if paused_hover else Color("#202523"))
+	draw_rect(pause_rect, LINE, false, 1.0)
 	for x in [1103, 1108]:
 		draw_rect(Rect2(x, 40, 2.5, 14), PAPER)
-	_text(Vector2(1125, 52), "Pause", _display, 17, PAPER)
-	_text(Vector2(1191, 51), "ESC", _mono, 11, MUTE)
+	_text(Vector2(1125, 52), "Pause", _display, 24 if _touch_layout else 17, PAPER)
+	if not _touch_layout:
+		_text(Vector2(1191, 51), "ESC", _mono, 11, MUTE)
 	var title_x := 45.0
 	if _cover:
 		draw_texture_rect(_cover, Rect2(45, 115, 86, 86), false)
@@ -757,7 +773,7 @@ func _draw_session() -> void:
 		var alpha := minf(_feedback_time / 0.14, 1.0)
 		_text(Vector2(455, 146), _feedback, _headline, 40, Color(col, alpha), 370.0, HORIZONTAL_ALIGNMENT_CENTER)
 		_text(Vector2(455, 167), _timing_feedback, _mono, 11, Color(PAPER, alpha * 0.82), 370.0, HORIZONTAL_ALIGNMENT_CENTER)
-	for hand in 2:
+	for hand in range(0 if _touch_layout else 2):
 		var left := _track_point(hand * Lanes.HAND_SPLIT, 0.0).x
 		var right := _track_point((hand + 1) * Lanes.HAND_SPLIT, 0.0).x
 		var mid := (left + right) * 0.5
@@ -767,7 +783,8 @@ func _draw_session() -> void:
 		draw_line(Vector2(mid + spacing, 702), Vector2(right - 2, 702), Color(color, 0.29), 1.0)
 		_text(Vector2(left, 706), "LEFT HAND" if hand == 0 else "RIGHT HAND", _mono, 10, MUTE, right - left, HORIZONTAL_ALIGNMENT_CENTER)
 	var time := clampf(_song_time, 0.0, _duration)
-	draw_line(Vector2(45, 720), Vector2(1235, 720), LINE, 1.0)
+	if not _touch_layout:
+		draw_line(Vector2(45, 720), Vector2(1235, 720), LINE, 1.0)
 	_text(Vector2(45, 761), _time_label(time), _mono, 16, PAPER)
 	_text(Vector2(1172, 761), _time_label(_duration), _mono, 16, MUTE, 64, HORIZONTAL_ALIGNMENT_RIGHT)
 	var ratio := clampf(time / maxf(_duration, 0.001), 0.0, 1.0)

@@ -42,6 +42,7 @@ var _cal_apply: Button
 var _cal_tap: Button
 var _tap_plot: Art
 var _focus_start: Control
+var _touch_layout := OS.has_feature("android")
 
 func setup(next_mode: String, data: Dictionary, settings: Dictionary) -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -103,7 +104,7 @@ func _open(next_mode: String) -> void:
 
 	_spacer(header)
 	var back_text := "←  Settings" if mode == "calibration" else ("←  Player guide" if mode == "credits" and _credits_from_guide else "←  Library")
-	var back := _button(header, back_text, _back)
+	var back := _button(header, back_text, go_back)
 	_focus_start = back
 	_line(_shell)
 	var scroll := ScrollContainer.new()
@@ -139,7 +140,7 @@ func _layout() -> void:
 	for row in _columns:
 		row.vertical = size.x < 880
 
-func _back() -> void:
+func go_back() -> void:
 	if _binding != -1:
 		_cancel_binding()
 	elif mode == "calibration":
@@ -156,7 +157,7 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_ESCAPE:
 			get_viewport().set_input_as_handled()
-			_back()
+			go_back()
 		elif _binding >= 0:
 			get_viewport().set_input_as_handled()
 			_accept_binding(event)
@@ -188,6 +189,18 @@ func _settings() -> void:
 	_button(cal_row, "Calibrate timing", func(): _open("calibration"))
 	var controls_card := _card(row)
 	_card_heading(controls_card, "Controls & display")
+	if _touch_layout:
+		_label(controls_card, "Tap a numbered pad to play its lane. For chords, touch all the matching pads together.", 18, MUTED, body_font, true)
+	else:
+		_keyboard_settings(controls_card)
+		_toggle_setting(controls_card, "Fullscreen", "fullscreen")
+	_toggle_setting(controls_card, "Reduced motion", "reduced_motion")
+	var actions := _hbox(10)
+	_body.add_child(actions)
+	_spacer(actions)
+	_button(actions, "Restore defaults", _restore_defaults)
+
+func _keyboard_settings(controls_card: Control) -> void:
 	for hand in range(2):
 		var hand_group := _vbox(6)
 		controls_card.add_child(hand_group)
@@ -209,12 +222,6 @@ func _settings() -> void:
 			lane_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_binding_hint = _label(controls_card, "Select a key to rebind its lane.", 14, MUTED, body_font, true)
 	_line(controls_card)
-	_toggle_setting(controls_card, "Fullscreen", "fullscreen")
-	_toggle_setting(controls_card, "Reduced motion", "reduced_motion")
-	var actions := _hbox(10)
-	_body.add_child(actions)
-	_spacer(actions)
-	_button(actions, "Restore defaults", _restore_defaults)
 
 func _slider_setting(parent: Control, caption: String, key: String, lo: int, hi: int, percent: bool) -> void:
 	var stack := _vbox(7)
@@ -231,7 +238,7 @@ func _slider_setting(parent: Control, caption: String, key: String, lo: int, hi:
 	slider.step = 1
 	slider.value = val
 	slider.scrollable = false
-	slider.custom_minimum_size.y = 20
+	slider.custom_minimum_size.y = 48 if _touch_layout else 20
 	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var groove := _style(FIELD, Color.TRANSPARENT, 3)
 	groove.content_margin_top = 3
@@ -309,29 +316,32 @@ func _accept_binding(event: InputEventKey) -> void:
 	_cancel_binding()
 
 func _guide() -> void:
-	_title("", "How to play", "Use both hands across ten keys. Play each note as it reaches the bright hit line.")
+	_title("", "How to play", "Play each note as it reaches the bright hit line.")
 	var row := _columns_row()
 	var preview := _card(row)
-	_card_heading(preview, "Hand position")
+	_card_heading(preview, "Touch pads" if _touch_layout else "Hand position")
 	var art := Art.new()
 	art.mode = "guide"
-	art.keys = prefs.keys.map(Lanes.key_name)
+	art.keys = range(1, Lanes.COUNT + 1).map(func(lane: int) -> String: return str(lane)) if _touch_layout else prefs.keys.map(Lanes.key_name)
 	art.mono_font = mono_font
 	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	art.custom_minimum_size.y = 186
 	preview.add_child(art)
-	var home: Array = prefs.keys.map(Lanes.key_name)
-	_label(preview, "Rest your index fingers on %s and %s. Reach inward from %s to %s with the left index, and from %s to %s with the right. Each index plays one key at a time." % [home[3], home[6], home[3], home[4], home[6], home[5]], 15, MUTED, body_font, true)
+	if _touch_layout:
+		_label(preview, "Each pad plays the lane directly above it. For chords, use a separate finger on each pad.", 17, MUTED, body_font, true)
+	else:
+		var home: Array = prefs.keys.map(Lanes.key_name)
+		_label(preview, "Rest your index fingers on %s and %s. Reach inward from %s to %s with the left index, and from %s to %s with the right. Each index plays one key at a time." % [home[3], home[6], home[3], home[4], home[6], home[5]], 15, MUTED, body_font, true)
 	var how := _card(row)
 	_card_heading(how, "Tap, hold, release")
-	_guide_item(how, "TAP", "Press the matching lane key when the head of a note reaches the line.")
-	_guide_item(how, "HOLD", "For long notes, keep the key down until the tail reaches the line.")
-	_guide_item(how, "PAUSE", "Press Esc to pause, restart the track, or return to the library.")
+	_guide_item(how, "TAP", "Tap the matching pad when the note reaches the line." if _touch_layout else "Press the matching lane key when the head of a note reaches the line.")
+	_guide_item(how, "HOLD", "For long notes, keep pressing until the tail reaches the line.")
+	_guide_item(how, "PAUSE", "Tap Pause to resume later, restart, or return to the library." if _touch_layout else "Press Esc to pause, restart the track, or return to the library.")
 	_guide_item(how, "TIMING", "If your hits consistently land early or late, use Calibrate timing in Settings.")
 	var details := _columns_row()
 	var levels := _card(details)
 	_card_heading(levels, "Difficulty")
-	for level in [["easy", "One note at a time, with room to find the next key."], ["normal", "Up to two keys at once, including holds."], ["hard", "Denser rhythms and quicker changes, still capped at two keys."], ["expert", "Multi-finger chords. Up to eight keys at once, including holds."]]:
+	for level in [["easy", "One note at a time, with room to find the next lane."], ["normal", "Up to two notes at once, including holds."], ["hard", "Denser rhythms and quicker changes, still capped at two."], ["expert", "Multi-finger chords. Up to eight notes at once, including holds."]]:
 		var level_row := _hbox(10)
 		levels.add_child(level_row)
 		var name_label := _label(level_row, Lanes.difficulty_name(level[0]).to_upper(), 11, LILAC, mono_font)
@@ -455,7 +465,7 @@ func _number(value: int) -> String:
 	return digits
 
 func _calibration() -> void:
-	_title("", "Calibrate timing", "Listen to the click and tap Space in time with eight beats.")
+	_title("", "Calibrate timing", "Listen to the click and tap the button in time with eight beats." if _touch_layout else "Listen to the click and tap Space in time with eight beats.")
 	var box := _card(_body)
 	_cal_status = _label(box, "0 / 8", 64, TEXT, display_font)
 	_tap_plot = Art.new()
@@ -555,7 +565,7 @@ func _button(parent: Control, caption: String, action: Callable, primary := fals
 	var button := Button.new()
 	button.text = caption
 	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	button.custom_minimum_size.y = 36
+	button.custom_minimum_size.y = 58 if _touch_layout else 36
 	button.add_theme_font_override("font", body_font)
 	button.add_theme_font_size_override("font_size", 16)
 	button.add_theme_stylebox_override("normal", _styled_button(GREEN if primary else FIELD, GREEN if primary else RULE))

@@ -2,3 +2,6 @@
 .DS_Store
 build/
 __pycache__/
+*.keystore
+*.jks
+*.p12

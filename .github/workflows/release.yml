@@ -1,4 +1,4 @@
-name: Desktop release
+name: Phaseline release
 
 on:
   push:
@@ -19,6 +19,7 @@ jobs:
     timeout-minutes: 25
     outputs:
       version: ${{ steps.version.outputs.version }}
+      android_signed: ${{ steps.android.outputs.signed }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -31,7 +32,7 @@ jobs:
         run: |
           git lfs fsck
           python3 tools/music/check_charts.py
-      - name: Install the official Godot 4.7.2 editor and desktop templates
+      - name: Install the official Godot 4.7.2 editor and export templates
         working-directory: ${{ runner.temp }}
         run: |
           base=https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable
@@ -49,25 +50,73 @@ jobs:
           install_dir="$HOME/.local/share/godot/export_templates/4.7.2.stable"
           mkdir -p "$install_dir"
           unzip -qj "$templates" 'templates/linux_*.x86_64' 'templates/windows_*_x86_64*.exe' \
-            templates/macos.zip templates/icudt_godot.dat templates/version.txt -d "$install_dir"
-      - name: Import resources and export all three packages
+            'templates/android_*.apk' templates/macos.zip templates/icudt_godot.dat templates/version.txt -d "$install_dir"
+      - name: Configure Android SDK for the prebuilt APK template
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'build-tools;35.0.1'
+          mkdir -p "$HOME/.config/godot"
+          cat > "$HOME/.config/godot/editor_settings-4.7.tres" <<EOF
+          [gd_resource type="EditorSettings" format=3]
+
+          [resource]
+          export/android/java_sdk_path = "$JAVA_HOME_17_X64"
+          export/android/android_sdk_path = "$ANDROID_HOME"
+          EOF
+      - name: Import resources and export all four packages
         shell: bash
         run: |
           set -euo pipefail
           out="$RUNNER_TEMP/packages"
-          mkdir -p "$out/windows" "$out/linux" "$out/macos" "$RUNNER_TEMP/release"
+          mkdir -p "$out/windows" "$out/linux" "$out/macos" "$RUNNER_TEMP/android-unsigned" "$RUNNER_TEMP/release"
+          # Finish all compilation and validate the APK before accessing a release identity.
+          sed -i 's/^package\/signed=true$/package\/signed=false/' export_presets.cfg
           godot --headless --editor --import --path .
           godot --headless --path . --export-release macOS "$out/macos/Phaseline.zip"
           godot --headless --path . --export-release Windows "$out/windows/Phaseline.exe"
           godot --headless --path . --export-release Linux "$out/linux/Phaseline.x86_64"
+          godot --headless --path . --export-release Android "$RUNNER_TEMP/android-unsigned/Phaseline-Android.apk"
+          python3 .github/scripts/android_apk.py "$RUNNER_TEMP/android-unsigned/Phaseline-Android.apk" "${{ steps.version.outputs.version }}"
           mv "$out/macos/Phaseline.zip" "$RUNNER_TEMP/release/Phaseline-macOS-universal.zip"
           (cd "$out/windows" && zip -qr "$RUNNER_TEMP/release/Phaseline-Windows-x86_64.zip" .)
           (cd "$out/linux" && zip -qr "$RUNNER_TEMP/release/Phaseline-Linux-x86_64.zip" .)
-          cd "$RUNNER_TEMP/release"
-          sha256sum -- *.zip > SHA256SUMS.txt
+      - name: Sign Android when the repository has a release keystore
+        id: android
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$ANDROID_KEYSTORE_BASE64" && -z "$ANDROID_KEYSTORE_PASSWORD" ]]; then
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "The Android build will use local release signing."
+            exit 0
+          fi
+          : "${ANDROID_KEYSTORE_BASE64:?Missing Android keystore}" "${ANDROID_KEYSTORE_PASSWORD:?Missing Android key password}"
+          umask 077
+          keystore="$RUNNER_TEMP/phaseline-release.p12"
+          trap 'rm -f "$keystore"' EXIT
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          unset ANDROID_KEYSTORE_BASE64
+          python3 .github/scripts/android_apk.py "$RUNNER_TEMP/android-unsigned/Phaseline-Android.apk" "$RELEASE_VERSION" \
+            --sign-with "$keystore" --out "$RUNNER_TEMP/release/Phaseline-Android.apk"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+      - name: Make the checksum manifest
+        working-directory: ${{ runner.temp }}/release
+        run: sha256sum -- Phaseline-* > SHA256SUMS.txt
+      - name: Retain the Android artifact for local signing
+        if: steps.android.outputs.signed == 'false'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-unsigned
+          path: ${{ runner.temp }}/android-unsigned/Phaseline-Android.apk
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: true
+          retention-days: 90
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: desktop-release
+          name: release-packages
           path: ${{ runner.temp }}/release/
           if-no-files-found: error
           compression-level: 0
@@ -89,15 +138,50 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: desktop-release
+          name: release-packages
           path: ${{ runner.temp }}/release
       - name: Start the packaged game on its target OS
         env:
           RELEASE_VERSION: ${{ needs.build.outputs.version }}
         run: python .github/scripts/smoke.py
 
+  android-smoke:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ needs.build.outputs.android_signed == 'true' && 'release-packages' || 'android-unsigned' }}
+          path: ${{ runner.temp }}/android-test
+      - name: Sign the smoke copy with a disposable key when using local release signing
+        if: needs.build.outputs.android_signed == 'false'
+        working-directory: ${{ runner.temp }}/android-test
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'build-tools;35.0.1'
+          keytool -genkeypair -storepass android -keypass android -keystore ci.p12 -alias smoke \
+            -keyalg RSA -keysize 2048 -validity 2 -dname 'CN=Phaseline CI test'
+          "$ANDROID_HOME/build-tools/35.0.1/apksigner" sign --ks ci.p12 --ks-pass pass:android Phaseline-Android.apk
+      - name: Enable hardware acceleration for the emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Install and start the packaged game on Android
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          script: bash .github/scripts/android-smoke.sh
+
   publish:
-    needs: [build, smoke]
+    needs: [build, smoke, android-smoke]
     permissions:
       contents: write
     runs-on: ubuntu-24.04
@@ -109,10 +193,11 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: desktop-release
+          name: release-packages
           path: ${{ runner.temp }}/release
       - name: Verify archives and publish the complete release
         env:
           GH_TOKEN: ${{ github.token }}
+          CI_SIGNED_ANDROID: ${{ needs.build.outputs.android_signed }}
           RELEASE_VERSION: ${{ needs.build.outputs.version }}
         run: python3 .github/scripts/publish.py

@@ -38,6 +38,7 @@ var animation_time := 0.0
 var gradient := GradientTexture2D.new()
 var left_shade := GradientTexture2D.new()
 var shape_cache := {}
+var _touch_layout := OS.has_feature("android")
 
 func setup(songs: Array, index: int, level: String, bests: Dictionary, settings: Dictionary) -> void:
 	tracks = songs
@@ -57,12 +58,13 @@ func setup(songs: Array, index: int, level: String, bests: Dictionary, settings:
 	_target("guide", Rect2(790,0,157,71), "How to play")
 	_target("settings", Rect2(958,0,145,71), "Settings")
 	_target("quit", Rect2(1186,14,46,43), "Quit game")
-	_target("preview", PREVIEW_RECT, "Play or stop preview (Space)")
+	_target("preview", PREVIEW_RECT.grow(9) if _touch_layout else PREVIEW_RECT, "Play or stop preview")
 	for i in tracks.size():
 		_target("track_%d" % i, _row_rect(i), "%s by %s" % [tracks[i].title, tracks[i].composer])
 	for i in LEVELS.size():
-		_target(LEVELS[i], Rect2(249+i*120,649,114,43), Layout.difficulty_name(LEVELS[i])+" difficulty")
-	_target("start",Rect2(950,640,260,60),"Start track (Enter)")
+		var rect := Rect2(249+i*120,649,114,43)
+		_target(LEVELS[i], rect.grow_individual(0, 12, 0, 12) if _touch_layout else rect, Layout.difficulty_name(LEVELS[i])+" difficulty")
+	_target("start",Rect2(950,640,260,60),"Start track")
 	_target("credits",Rect2(1127,754,106,40),"Music and game credits")
 	queue_redraw()
 
@@ -324,8 +326,9 @@ func _controls(track: Dictionary) -> void:
 	_box(Rect2(950,640,260,60),Color("#d7ff91") if _hot("start") else LIME,Color.TRANSPARENT,4)
 	_icon("play",971,656,27,BG)
 	_text("START TRACK",1010,678,25,BG,italic)
-	_box(Rect2(1154,658,39,23),Color("#00000008"), Color("#1a250e66"),3)
-	_text("ENT",1163,674,11,BG,MONO)
+	if not _touch_layout:
+		_box(Rect2(1154,658,39,23),Color("#00000008"), Color("#1a250e66"),3)
+		_text("ENT",1163,674,11,BG,MONO)
 
 func _keycap(value: String,x: float,y: float,width: float) -> void:
 	_box(Rect2(x,y,width,22),Color("#1d2022"),Color("#393e40"),3)
@@ -334,13 +337,16 @@ func _keycap(value: String,x: float,y: float,width: float) -> void:
 
 func _footer() -> void:
 	draw_line(Vector2(48,751),Vector2(1232,751),LINE)
-	_keycap("↑",48,766,22)
-	_keycap("↓",74,766,22)
-	_text("Browse",106,782,15,MUTED)
-	_keycap("←",182,766,22)
-	_keycap("→",208,766,22)
-	_text("Difficulty",240,782,15,MUTED)
-	_keycap("SPACE",329,766,48)
-	_text("Preview",387,782,15,MUTED)
+	if _touch_layout:
+		_text("Tap the numbered pads when the notes reach the line.",48,782,19,MUTED)
+	else:
+		_keycap("↑",48,766,22)
+		_keycap("↓",74,766,22)
+		_text("Browse",106,782,15,MUTED)
+		_keycap("←",182,766,22)
+		_keycap("→",208,766,22)
+		_text("Difficulty",240,782,15,MUTED)
+		_keycap("SPACE",329,766,48)
+		_text("Preview",387,782,15,MUTED)
 	_icon("music",1142,765,19,WHITE if _hot("credits") else DIM)
 	_text("Credits",1170,782,16,WHITE if _hot("credits") else MUTED)

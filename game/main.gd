@@ -19,7 +19,8 @@ var screen := ""
 var config := ConfigFile.new()
 
 func _ready() -> void:
-	get_window().min_size = Vector2i(800, 500)
+	if not OS.has_feature("android"):
+		get_window().min_size = Vector2i(800, 500)
 	config.load(SAVE_PATH)
 	var saved: Variant = config.get_value("player", "settings", {})
 	if saved is Dictionary:
@@ -58,7 +59,7 @@ func _save() -> void:
 		push_warning("Could not save player preferences.")
 
 func _apply_display() -> void:
-	if DisplayServer.get_name() != "headless":
+	if DisplayServer.get_name() != "headless" and not OS.has_feature("android"):
 		var mode := DisplayServer.WINDOW_MODE_FULLSCREEN if prefs.fullscreen else DisplayServer.WINDOW_MODE_WINDOWED
 		var is_fullscreen := DisplayServer.window_get_mode() in [DisplayServer.WINDOW_MODE_FULLSCREEN, DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN]
 		if is_fullscreen != bool(prefs.fullscreen):
@@ -161,5 +162,10 @@ func _settings_changed(updated: Dictionary) -> void:
 	_save()
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_APPLICATION_FOCUS_OUT and screen == "library" and preview.playing:
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		if screen == "library":
+			get_tree().quit()
+		elif is_instance_valid(active):
+			active.call_deferred("go_back")
+	elif what in [NOTIFICATION_APPLICATION_FOCUS_OUT, NOTIFICATION_APPLICATION_PAUSED] and screen == "library" and preview.playing:
 		_stop_preview()
