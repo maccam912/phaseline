@@ -18,6 +18,9 @@ KITS = {
     'waltz': ('Crate Digger', 'Kick_2', 'Snare_2', 'Snare_3', 'Clap_2', 'Rim'),
     'breaks': ('Pile Driver', 'Kick_1', 'Snare_1', 'Snare_3', 'Clap_2', 'Tom_High'),
     'house': ('Big Room', 'Kick_2', 'Snare_2', 'Snare_3', 'Clap_1', 'Click'),
+    'rag': ('Silverlake', 'Kick_1', 'Snare_1', 'Snare_3', 'Clap_1', 'Bonk'),
+    'habanera': ('Trap Door', 'Kick_2', 'Snare_1', 'Snare_3', 'Clap_1', 'Rim'),
+    'spring': ('After Party', 'Kick_1', 'Snare_1', 'Snare_3', 'Clap_2', 'Block'),
 }
 ROOM_SEND = {'snare': 0.22, 'rim': 0.16, 'crash': 0.13, 'hat_open': 0.045}
 DRUM_GAIN = {'kick': .94, 'snare': .81, 'rim': .58, 'hat': .49,

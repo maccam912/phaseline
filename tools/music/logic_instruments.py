@@ -8,6 +8,7 @@ and the mixer's channel fader controls the final volume.
 import os
 import re
 import struct
+import subprocess
 import warnings
 from dataclasses import dataclass
 from fractions import Fraction
@@ -30,6 +31,8 @@ PIANO_EXS = LOGIC / "Sampler Instruments/01 Acoustic Pianos/Steinway Grand Piano
 # (e.g. Mark II C3 says 16). Wind/string file names use C4 at MIDI 60.
 BANKS = {
     "ep": (ALCHEMY / "Keys/Electric Pianos/EPiano Mrk II", 2),
+    "muted_bass": (ALCHEMY / "Bass/Real Bass/MMBass Mute", 2),
+    "metal_mallet": (ALCHEMY / "Mallets/Metal Mallets/Bell Attack Pad", 1),
     "organ": (ALCHEMY / "Organs/60s Transistor Organ", 2),
     "strings": (ORCHESTRA / "String Ensemble", 1),
     "flute": (ORCHESTRA / "Flute Solo/Flute_LV_na_sus_mf", 1),
@@ -113,6 +116,19 @@ def _piano_audio():
 def _zones(bank):
     if bank == "piano":
         return _steinway_zones()
+    if bank == "upright":
+        # The bass bank uses extensionless AIFFs. Only the sustained, pitched
+        # plucks have KBLONS names; the other recordings are finger/string noise.
+        directory = ORCHESTRA / "Upright Jazz Bass"
+        zones = []
+        for path in sorted(directory.glob("*KBLONS*")):
+            note = re.fullmatch(r"(?:YT)?KBLONS[12]([A-G])(\d)X0\d", path.name)
+            if note:
+                letter, register = note.groups()
+                zones.append(Zone(path, (int(register) + 1) * 12 + SEMITONE[letter]))
+        if not zones:
+            raise FileNotFoundError(f"Install the Logic instrument samples in {directory}")
+        return zones
     directory, octave = BANKS[bank]
     zones = []
     for path in sorted(directory.glob("*.wav")):
@@ -120,6 +136,10 @@ def _zones(bank):
         if note:
             letter, sharp, register = note.groups()
             pitch = (int(register) + octave) * 12 + SEMITONE[letter] + bool(sharp)
+            # The bell pad's sustained C4 rings at 255 Hz (also 510 Hz at C5).
+            # Tune its pitched layer to the strings before resampling each note.
+            if bank == "metal_mallet":
+                pitch -= .44
             zones.append(Zone(path, pitch))
     if not zones:
         raise FileNotFoundError(f"Install the Logic instrument samples in {directory}")
@@ -131,6 +151,11 @@ def _source(zone):
     if zone.end:
         rate, recording = _piano_audio()
         samples = recording[zone.start:zone.end]
+    elif not zone.path.suffix:
+        rate = 44100
+        raw = subprocess.check_output(["ffmpeg", "-v", "error", "-i", str(zone.path),
+                                       "-ar", str(rate), "-ac", "2", "-f", "f32le", "pipe:1"])
+        samples = np.frombuffer(raw, dtype="<f4").reshape(-1, 2)
     else:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", wavfile.WavFileWarning)
@@ -171,7 +196,11 @@ def _note(bank, pitch, duration, velocity, variant, rate, release):
     index = 0
     # An alternate adjacent recording gives repeated notes a second attack.
     # Only do this when both recordings are naturally close to the requested key.
-    if len(candidates) > 1 and variant % 5 == 3 and abs(candidates[1].root - pitch) <= 2:
+    if bank == "upright":
+        # Repeated plucks at a given pitch can use different recorded attacks.
+        takes = [zone for zone in candidates if zone.root == candidates[0].root]
+        index = candidates.index(takes[variant % len(takes)])
+    elif len(candidates) > 1 and variant % 5 == 3 and abs(candidates[1].root - pitch) <= 2:
         index = 1
     source = _transposed(candidates[index], pitch, rate)
     count = min(len(source), max(1, round((duration + release) * rate)))
@@ -195,6 +224,32 @@ def sampled_voice(style, kind, pitch, duration, velocity, variant, rate):
     def play(bank, release=0.15, dynamic=velocity):
         return _note(bank, pitch, duration, dynamic, variant, rate, release)
 
+    if style == "rag":
+        if kind == "felt":
+            return play("piano", .19)
+        if kind == "organ":
+            return play("ep", .095)
+        if kind == "bass":
+            return play("upright", .13)
+    if style == "habanera":
+        if kind == "bass":
+            return play("muted_bass", .09)
+        if kind == "felt":
+            return play("ep", .25)
+        if kind == "pad":
+            return play("strings", .22)
+    if style in ("rag", "habanera") and kind == "reed":
+        return play("clarinet_short" if duration < .23 else "clarinet", .12)
+    if style == "spring":
+        if kind == "bow":
+            strings = play("strings", .14)
+            if duration < .22:
+                return _blend(strings, play("piano", .075, dynamic=.64 * velocity), .18)
+            return strings
+        if kind == "bird":
+            return play("flute_short" if duration < .24 else "flute", .12)
+        if kind == "mallet":
+            return play("metal_mallet", .21)
     if style == "wave" and kind in ("pluck", "bell"):
         return play("piano", 0.28 if kind == "bell" else 0.15,
                     dynamic=velocity * (0.57 if kind == "bell" else 0.91))

@@ -22,6 +22,9 @@ const Layout = preload("res://game/lanes.gd")
 const LEVELS := ["easy", "normal", "hard", "expert"]
 const LEFT_ART := Rect2(48,185,647,328)
 const PREVIEW_RECT := Rect2(566,458,108,34)
+const PAGE_SIZE := 5
+const PREVIOUS_PAGE_RECT := Rect2(1118,171,52,47)
+const NEXT_PAGE_RECT := Rect2(1180,171,52,47)
 
 var tracks: Array
 var current := 0
@@ -59,8 +62,12 @@ func setup(songs: Array, index: int, level: String, bests: Dictionary, settings:
 	_target("settings", Rect2(958,0,145,71), "Settings")
 	_target("quit", Rect2(1186,14,46,43), "Quit game")
 	_target("preview", PREVIEW_RECT.grow(9) if _touch_layout else PREVIEW_RECT, "Play or stop preview")
+	if tracks.size() > PAGE_SIZE:
+		_target("previous_page", PREVIOUS_PAGE_RECT, "Previous setlist page")
+		_target("next_page", NEXT_PAGE_RECT, "Next setlist page")
 	for i in tracks.size():
 		_target("track_%d" % i, _row_rect(i), "%s by %s" % [tracks[i].title, tracks[i].composer])
+	_sync_setlist()
 	for i in LEVELS.size():
 		var rect := Rect2(249+i*120,649,114,43)
 		_target(LEVELS[i], rect.grow_individual(0, 12, 0, 12) if _touch_layout else rect, Layout.difficulty_name(LEVELS[i])+" difficulty")
@@ -80,7 +87,18 @@ func _gradient(a: Vector2,b: Vector2,stops: PackedFloat32Array,colors: PackedCol
 	return tex
 
 func _row_rect(i: int) -> Rect2:
-	return Rect2(719,222+i*76,513,69)
+	return Rect2(719,222+(i % PAGE_SIZE)*76,513,69)
+
+func _page_start() -> int:
+	return current - current % PAGE_SIZE
+
+func _sync_setlist() -> void:
+	var first := _page_start()
+	for i in tracks.size():
+		targets["track_%d" % i].visible = i >= first and i < first + PAGE_SIZE
+	if tracks.size() > PAGE_SIZE:
+		targets.previous_page.disabled = first == 0
+		targets.next_page.disabled = first + PAGE_SIZE >= tracks.size()
 
 func _target(id: String, rect: Rect2, description: String) -> void:
 	var button := Button.new()
@@ -108,6 +126,8 @@ func _activate(id: String) -> void:
 		"preview": preview_requested.emit()
 		"quit": quit_requested.emit()
 		"start": play_requested.emit()
+		"previous_page": _select(maxi(0, _page_start() - PAGE_SIZE))
+		"next_page": _select(mini(tracks.size() - 1, _page_start() + PAGE_SIZE))
 		"easy", "normal", "hard", "expert":
 			difficulty = id
 			difficulty_changed.emit(id)
@@ -119,6 +139,7 @@ func _activate(id: String) -> void:
 func _select(index: int) -> void:
 	if index != current:
 		current = index
+		_sync_setlist()
 		selection_changed.emit(current)
 	queue_redraw()
 
@@ -285,8 +306,15 @@ func _format_score(score: int) -> String:
 func _setlist() -> void:
 	_icon("stack",718,184,23,LIME)
 	_small("SETLIST",751,201,WHITE,14,1.1)
-	_right("%02d TRACKS" % tracks.size(),1230,201,12,DIM)
-	for i in tracks.size():
+	var first := _page_start()
+	var end := mini(first + PAGE_SIZE, tracks.size())
+	if tracks.size() > PAGE_SIZE:
+		_right("%d–%d OF %d" % [first+1, end, tracks.size()],1102,201,13,MUTED)
+		_page_arrow("previous_page", PREVIOUS_PAGE_RECT, -1)
+		_page_arrow("next_page", NEXT_PAGE_RECT, 1)
+	else:
+		_right("%02d TRACKS" % tracks.size(),1230,201,12,DIM)
+	for i in range(first, end):
 		var rect := _row_rect(i)
 		var y := rect.position.y
 		var chosen := i == current
@@ -306,6 +334,17 @@ func _setlist() -> void:
 				draw_rect(Rect2(1205+bar*4,y+34-h/2.0,2.5,h),LIME)
 		else:
 			_icon("chevron",1205,y+26,15,DIM)
+
+func _page_arrow(id: String, rect: Rect2, direction: int) -> void:
+	var available: bool = not targets[id].disabled
+	var color := LIME if available else DIM.darkened(0.36)
+	_box(rect.grow_individual(0,-5,0,-5),Color("#292d30") if available and _hot(id) else PANEL,LINE)
+	var center := rect.get_center()
+	draw_polyline(PackedVector2Array([
+		center + Vector2(-3 * direction, -6),
+		center + Vector2(3 * direction, 0),
+		center + Vector2(-3 * direction, 6),
+	]), color, 2.2, true)
 
 func _controls(track: Dictionary) -> void:
 	_box(Rect2(48,620,1184,102),Color("#171a1c"),LINE,5)

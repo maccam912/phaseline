@@ -494,4 +494,9 @@ def mozart():
 
 
 def album():
-    return [bach(), beethoven(), satie(), grieg(), mozart()]
+    from maple_rag import make_score as maple_after_hours
+    from habanera import make_score as cinder_step
+    from spring import make_score as first_light
+
+    return [bach(), beethoven(), satie(), grieg(), mozart(),
+            maple_after_hours(), cinder_step(), first_light()]

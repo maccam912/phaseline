@@ -1,6 +1,6 @@
 # Phaseline
 
-A ten-lane rhythm game for desktop and Android, built in Godot 4.7. Five electronic arrangements of classical works each have Easy, Medium, Hard, and Expert charts. All game assets are bundled for offline play.
+A ten-lane rhythm game for desktop and Android, built in Godot 4.7. Eight electronic arrangements of classical works each have Easy, Medium, Hard, and Expert charts. All game assets are bundled for offline play.
 
 ## Play
 
@@ -34,6 +34,9 @@ Settings include independent music and hit volumes, reduced motion, and timing c
 | Velvet Orbit | Satie’s Gymnopédie No. 1 | Downtempo waltz · 90 BPM |
 | Breakpoint | Grieg’s In the Hall of the Mountain King | Drum and bass · 156 BPM |
 | Afterimage | Mozart’s Alla turca | Electro house · 128 BPM |
+| Maple After Hours | Joplin’s Maple Leaf Rag | Electro swing · 114 BPM |
+| Cinder Step | Bizet’s Habanera from Carmen | Electro-tango · 96 BPM |
+| First Light | Vivaldi’s Spring, first movement | Orchestral trance · 138 BPM |
 
 The historical compositions are in the U.S. public domain. The finished game mixes combine original synthesizers with licensed Logic Pro instruments and drum kits. The arrangements and charts are available under CC0. See the [soundtrack credits](music/CREDITS.md) for composition sources, recording terms, and offline rendering instructions. The [cover-art notes](assets/covers/ARTWORK.md) document the illustrations. Font and Godot notices are in `assets/fonts` and `assets/licenses`.
 

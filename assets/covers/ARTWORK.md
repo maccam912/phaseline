@@ -1,6 +1,6 @@
 # Phaseline cover art
 
-These five original illustrations were generated for Phaseline with the built-in ImageGen tool and encoded as WebP for the game. The common prompt asked for a single edge-to-edge illustrated electronic record cover without lettering, logos, frames, borders or watermarks. Each track used its own art direction.
+These original illustrations were generated for Phaseline with the built-in ImageGen tool and encoded as WebP for the game. The common prompt asked for a single edge-to-edge illustrated electronic record cover without lettering, logos, frames, borders or watermarks. Each track used its own art direction.
 
 | Cover file | Image prompt |
 | --- | --- |
@@ -9,3 +9,6 @@ These five original illustrations were generated for Phaseline with the built-in
 | velvet-orbit.webp | A vast dusty-pink ringed planet and a tiny gliding spacecraft sit in a deep mulberry cosmos. Compose the rings on a diagonal and use lavender shadows, engraving-like hatching, stars and the grain of a retrofuturist cut-paper print. |
 | breakpoint.webp | Black and vermilion woodblock-style motorsport poster. Show a 1980s rally coupe from the front three-quarter view, four cream headlights glowing as it skids toward the camera through burnt-orange dust. Add dramatic cropping, red and peach speed streaks and tangible halftone ink. |
 | afterimage.webp | A white crane in profile with angular wings outstretched and ghosted echoes of flight. Place it against an electric-cobalt city skyline and a pale-blue disc sun. Use silkscreen white outlines, cel-painted highlights, bold blue-on-black color blocking and printed paper grain. |
+| maple-after-hours.webp | Piano onstage at a late-night Art Deco jazz club, seen through an arched window. Amber light reflects in piano-key shapes across wet midnight-teal pavement. |
+| cinder-step.webp | A Spanish folding fan with black lace sweeps through embers. Deep oxblood, carmine, copper and warm cream form the halftone print. |
+| first-light.webp | A swallow rises in front of a low lemon sun over layered alpine meadows. Sharp leaves and morning light cut across forest teal and spring green. |

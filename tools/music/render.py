@@ -198,7 +198,11 @@ def render(s, target):
              for key in ('drums', 'bass', 'melody', 'chords', 'room', 'echo')}
     rng = np.random.default_rng(4001 + int(hashlib.sha256(s.id.encode()).hexdigest()[:4], 16))
     duck = np.ones(frames, np.float32)
-    release = {'wave': .115, 'house': .102, 'waltz': .082, 'breaks': .073, 'garage': .078}[s.style]
+    release, duck_depth = {
+        'wave': (.115, .45), 'house': (.102, .56), 'waltz': (.082, .17),
+        'breaks': (.073, .33), 'garage': (.078, .4), 'rag': (.068, .19),
+        'habanera': (.093, .27), 'spring': (.105, .47),
+    }[s.style]
     recovery = np.exp(-np.arange(round(release * 4 * RATE)) / (RATE * release))
     for beat, kind, pitch, length, velocity, pan in s.events:
         start = round((ORIGIN + beat * beat_seconds) * RATE)
@@ -213,8 +217,7 @@ def render(s, target):
             echo = 0.0
             if kind == 'kick':
                 end = min(start + len(recovery), frames)
-                depth = {'wave': .45, 'house': .56, 'waltz': .17, 'breaks': .33, 'garage': .4}[s.style]
-                duck[start:end] = np.minimum(duck[start:end], 1 - velocity * depth * recovery[:end - start])
+                duck[start:end] = np.minimum(duck[start:end], 1 - velocity * duck_depth * recovery[:end - start])
         else:
             audio = sampled_voice(s.style, kind, pitch, duration, velocity, variant, RATE)
             if audio is None:
@@ -253,7 +256,7 @@ def render(s, target):
     drums = .86 * drums + .14 * np.tanh(1.8 * drums)
     synth = buses['chords'] * (.38 + .62 * duck[:, None]) + buses['bass'] * duck[:, None]
     mix = drums + synth + (buses['melody'] + room) * (.83 + .17 * duck[:, None])
-    target_lufs = -15.0 if s.style == 'waltz' else -12.0
+    target_lufs = {'waltz': -15.0, 'rag': -13.0, 'habanera': -14.0}.get(s.style, -12.0)
     mastered = _master(mix, target_lufs)
     subprocess.run(['ffmpeg', '-v', 'error', '-y', '-f', 'f32le', '-ar', str(RATE), '-ac', '2',
                     '-i', 'pipe:0', '-c:a', 'libmp3lame', '-b:a', '224k',
